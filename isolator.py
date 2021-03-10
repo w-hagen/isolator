@@ -114,7 +114,7 @@ def sponge(q,q_ref,sigma):
 
 @mpi_entry_point
 def main(ctx_factory=cl.create_some_context,
-         snapshot_pattern="y0euler-{step:06d}-{rank:04d}.pkl",
+         snapshot_pattern="isolator-{step:06d}-{rank:04d}.pkl",
          restart_step=None, use_profiling=False, use_logmgr=False):
     """Drive the Y0 example."""
 
@@ -125,17 +125,8 @@ def main(ctx_factory=cl.create_some_context,
     nparts = comm.Get_size()
 
     """logging and profiling"""
-    #logmgr = initialize_logmgr(use_logmgr, use_profiling, filename="y0euler.sqlite",
-    #    mode="wu", mpi_comm=comm)
 
     cl_ctx = ctx_factory()
-    #if use_profiling:
-    #    queue = cl.CommandQueue(cl_ctx,
-    #        properties=cl.command_queue_properties.PROFILING_ENABLE)
-    #    actx = PyOpenCLProfilingArrayContext(queue,
-    #        allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)),
-    #        logmgr=logmgr)
-    #else:
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue,
         allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
