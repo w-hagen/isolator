@@ -59,7 +59,7 @@ from mirgecom.io import make_init_message
 from mirgecom.mpi import mpi_entry_point
 import pyopencl.tools as cl_tools
 
-from mirgecom.integrators import rk4_step,rk1_step
+from mirgecom.integrators import rk4_step, euler_step
 from mirgecom.steppers import advance_state
 from mirgecom.boundary import (
     PrescribedBoundary,
@@ -194,7 +194,7 @@ def main(ctx_factory=cl.create_some_context,
     mach_inflow=infloM = 0.139145
     vel_inflow[0] = mach_inflow*math.sqrt(gamma_CO2*pres_inflow/rho_inflow)
 
-    timestepper = rk1_step
+    timestepper = euler_step
     eos = IdealSingleGas(gamma=gamma_CO2, gas_const=R_CO2)
     bulk_init = Discontinuity(dim=dim, x0=0.235,sigma=0.004,
                               rhol=rho_inflow, rhor=rho_bkrnd,
