@@ -1,4 +1,4 @@
-If(size)
+If(Exists(size))
     basesize=size;
 Else
     basesize=0.002;
