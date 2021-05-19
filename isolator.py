@@ -44,11 +44,12 @@ from meshmode.dof_array import thaw, flatten, unflatten
 from meshmode.mesh import BTAG_ALL, BTAG_NONE  # noqa
 from grudge.eager import EagerDGDiscretization
 from grudge.shortcuts import make_visualizer
+from grudge.dof_desc import DTAG_BOUNDARY
 
 from mirgecom.profiling import PyOpenCLProfilingArrayContext
 
 from mirgecom.euler import inviscid_operator
-from mirgecom.artificial_viscosity import artificial_viscosity
+from mirgecom.artificial_viscosity import av_operator
 from mirgecom.simutil import (
     inviscid_sim_timestep,
     sim_checkpoint,
@@ -64,14 +65,12 @@ from mirgecom.steppers import advance_state
 from mirgecom.boundary import (
     PrescribedBoundary,
     AdiabaticSlipBoundary,
-    AdiabaticNoslipBoundary,
+    AdiabaticNoslipMovingBoundary,
     DummyBoundary
 )
 from mirgecom.initializers import (
-    Lump,
-    Discontinuity
+    Lump
 )
-#from mirgecom.slope_limit import slope_limit
 from mirgecom.eos import IdealSingleGas
 
 logger = logging.getLogger(__name__)
@@ -84,7 +83,7 @@ def get_mesh():
         ScriptWithFilesSource
     )
 
-    meshfile="./isolator_0p5_diverge.msh"
+    meshfile="/usr/workspace/hagen7/mirgecom/lassen/mergetesting/ns/emirge/mirgecom/examples/isolator/isolator_0p5_diverge.msh"
     mesh = read_gmsh(meshfile,force_ambient_dim=2)
 
     return mesh
@@ -111,6 +110,101 @@ def mass_source(discr,q,r,eos,t,rate):
      
 def sponge(q,q_ref,sigma):
     return(sigma*(q_ref-q))
+
+
+class Discontinuity:
+    r"""Initializes the flow to a discontinuous state, planar located at x=xloc
+    The inital condition is defined
+    .. math::
+        (\rho,u,P) = 
+    This function only serves as an initial condition
+    .. automethod:: __init__
+    .. automethod:: __call__
+    """
+
+    def __init__(
+            self,dim=2, x0=0., rhol=0.1, rhor=0.01, pl=20, pr=10., ul=0.1, ur=0., sigma=0.5
+    ):
+        """Initialize initial condition options
+        Parameters
+        ----------
+        dim: int
+           dimension of domain
+        x0: float
+           location of discontinuity
+        rhol: float
+           left density
+        rhor: float
+           right density
+        pl: float
+           left pressure
+        pr: float
+           right pressure
+        ul: float
+           left velocity
+        ur: float
+           right velocity
+        sigma: float
+           sharpness parameter
+        """
+        self._dim = dim
+        self._x0 = x0
+        self._rhol = rhol
+        self._rhor = rhor
+        self._pl = pl
+        self._pr = pr
+        self._ul = ul
+        self._ur = ur
+        self._sigma = sigma
+
+    def __call__(self, t, x_vec, eos=IdealSingleGas()):
+        """
+        Create the discontinuity at locations *x_vec*.
+        profile is defined by <left_val>/2.0*(tanh(-(x-x0)/\sigma)+1)+<right_val>/2.0*(tanh((x-x0)/\sigma)+1.0)
+        Parameters
+        ----------
+        t: float
+            Current time at which the solution is desired (unused)
+        x_vec: numpy.ndarray
+            Nodal coordinates
+        eos: :classg
+s.GasEO      Stion of state class to be used in construction of soln (if needed)
+        """
+        x_rel = x_vec[0]
+        actx = x_rel.array_context
+        gm1 = eos.gamma() - 1.0
+        zeros = 0*x_rel
+        sigma=self._sigma
+
+        x0 = zeros + self._x0
+        t = zeros + t
+        
+        rhol = zeros + self._rhol
+        rhor = zeros + self._rhor
+        ul = zeros + self._ul
+        ur = zeros + self._ur
+        rhoel = zeros + self._pl/gm1
+        rhoer = zeros + self._pr/gm1
+
+        xtanh = 1.0/sigma*(x_rel-x0)
+        mass = rhol/2.0*(actx.np.tanh(-xtanh)+1.0)+rhor/2.0*(actx.np.tanh(xtanh)+1.0)
+        rhoe = rhoel/2.0*(actx.np.tanh(-xtanh)+1.0)+rhoer/2.0*(actx.np.tanh(xtanh)+1.0)
+        u = ul/2.0*(actx.np.tanh(-xtanh)+1.0)+ur/2.0*(actx.np.tanh(xtanh)+1.0)
+        rhou = mass*u
+        energy = rhoe + 0.5*mass*(u*u)
+
+        from pytools.obj_array import make_obj_array
+        from mirgecom.fluid import join_conserved
+        mom = make_obj_array(
+            [
+                0*x_rel
+                for i in range(self._dim)
+            ]
+        )
+        mom[0]=rhou
+
+        return join_conserved(dim=self._dim, mass=mass, energy=energy,
+                              momentum=mom)
 
 @mpi_entry_point
 def main(ctx_factory=cl.create_some_context,
@@ -202,13 +296,12 @@ def main(ctx_factory=cl.create_some_context,
                               ul=vel_inflow[0], ur=300.)
     inflow_init = Lump(dim=dim, rho0=rho_inflow, p0=pres_inflow,
                        center=orig, velocity=vel_inflow, rhoamp=0.0)
-    wall = AdiabaticNoslipBoundary()
+    wall = AdiabaticNoslipMovingBoundary()
     dummy = DummyBoundary()
 
-    from grudge import sym
-    boundaries = {sym.DTAG_BOUNDARY("inflow"): PrescribedBoundary(inflow_init),
-                  sym.DTAG_BOUNDARY("outflow"): dummy,
-                  sym.DTAG_BOUNDARY("wall"): wall}
+    boundaries = {DTAG_BOUNDARY("inflow"): PrescribedBoundary(inflow_init),
+                  DTAG_BOUNDARY("outflow"): dummy,
+                  DTAG_BOUNDARY("wall"): wall}
 
 
     
@@ -279,7 +372,7 @@ def main(ctx_factory=cl.create_some_context,
             exit()
         return ( 
                  inviscid_operator(discr, q=state, t=t,boundaries=boundaries, eos=eos)
-               + artificial_viscosity(discr,t=t, r=state, eos=eos, boundaries=boundaries, alpha=epsilon,s0=so)
+               + av_operator(discr, q=state, boundaries=boundaries, boundary_kwargs={"time": t, "eos": eos}, alpha=epsilon,s0=so)
                #+ mass_source(discr,t=t,q=state,eos=eos,rate=0.25e5,r=nodes)
                + sponge(q=state,q_ref=state_init,sigma=sigma)
                )
