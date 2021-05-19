@@ -49,6 +49,7 @@ from grudge.dof_desc import DTAG_BOUNDARY
 from mirgecom.profiling import PyOpenCLProfilingArrayContext
 
 from mirgecom.euler import inviscid_operator
+from mirgecom.navierstokes import ns_operator
 from mirgecom.artificial_viscosity import av_operator
 from mirgecom.simutil import (
     inviscid_sim_timestep,
@@ -72,6 +73,7 @@ from mirgecom.initializers import (
     Lump
 )
 from mirgecom.eos import IdealSingleGas
+from mirgecom.transport import SimpleTransport
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +253,11 @@ def main(ctx_factory=cl.create_some_context,
     epsilon = 3.0e-1*(1.0)/order #This is using a porportionality constant of 3.0e-1 and taking 0p5x as the base grid h
     print(so, epsilon, flush=True)
 
+    # {{{ Initialize simple transport model
+    kappa = 1.0e-5
+    sigma = 1.0e-5
+    transport_model = SimpleTransport(viscosity=sigma, thermal_conductivity=kappa)
+    # }}}
     # working gas: CO2 #
     #   gamma = 1.289
     #   MW=44.009  g/mol
@@ -289,7 +296,7 @@ def main(ctx_factory=cl.create_some_context,
     vel_inflow[0] = mach_inflow*math.sqrt(gamma_CO2*pres_inflow/rho_inflow)
 
     timestepper = euler_step
-    eos = IdealSingleGas(gamma=gamma_CO2, gas_const=R_CO2)
+    eos = IdealSingleGas(gamma=gamma_CO2, gas_const=R_CO2, transport_model=transport_model)
     bulk_init = Discontinuity(dim=dim, x0=0.235,sigma=0.004,
                               rhol=rho_inflow, rhor=rho_bkrnd,
                               pl=pres_inflow, pr=pres_bkrnd,
@@ -371,7 +378,7 @@ def main(ctx_factory=cl.create_some_context,
         if nanval != nanval:
             exit()
         return ( 
-                 inviscid_operator(discr, q=state, t=t,boundaries=boundaries, eos=eos)
+                 ns_operator(discr, q=state, t=t,boundaries=boundaries, eos=eos)
                + av_operator(discr, q=state, boundaries=boundaries, boundary_kwargs={"time": t, "eos": eos}, alpha=epsilon,s0=so)
                #+ mass_source(discr,t=t,q=state,eos=eos,rate=0.25e5,r=nodes)
                + sponge(q=state,q_ref=state_init,sigma=sigma)
