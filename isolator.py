@@ -83,7 +83,7 @@ def get_mesh():
         ScriptWithFilesSource
     )
 
-    meshfile="/usr/workspace/hagen7/mirgecom/lassen/mergetesting/ns/emirge/mirgecom/examples/isolator/isolator_0p5_diverge.msh"
+    meshfile="./isolator.msh"
     mesh = read_gmsh(meshfile,force_ambient_dim=2)
 
     return mesh
