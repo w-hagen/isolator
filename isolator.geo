@@ -1,4 +1,8 @@
-basesize=0.0005;
+If(size)
+    basesize=size;
+Else
+    basesize=0.002;
+EndIf
 
 //Top Wall
 Point(1) = {0.2273,0.0270645,0.0,basesize};
