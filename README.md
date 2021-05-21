@@ -12,7 +12,7 @@ cd emirge
 
 ```
 cd mirgecom
-git checkout add-av-to-ns
+git checkout y1-production
 ```
 
 ### Get this case file
