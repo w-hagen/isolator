@@ -256,10 +256,10 @@ def main(
 
     order = 3
     so = np.log10(1.0e-4 / np.power(order, 4))
+    # This uses proportionality constant of 3.0e-1 and taking 0p5x as the base grid h
     epsilon = (
         3.0e-1 * (1.0) / order
     )
-    # This uses proportionality constant of 3.0e-1 and taking 0p5x as the base grid h
     print(so, epsilon, flush=True)
 
     # {{{ Initialize simple transport model
