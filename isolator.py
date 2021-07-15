@@ -82,9 +82,10 @@ class MyRuntimeError(RuntimeError):
     pass
 
 
-def get_mesh(mesh_filename):
+def get_mesh():
     """Get the mesh."""
     from meshmode.mesh.io import read_gmsh
+    mesh_filename = "data/isolator.msh"
     mesh = read_gmsh(mesh_filename, force_ambient_dim=2)
     return mesh
 
@@ -206,7 +207,6 @@ class Discontinuity:
         energy = rhoe + 0.5 * mass * (u * u)
 
         from pytools.obj_array import make_obj_array
-
         mom = make_obj_array([0 * x_rel for i in range(self._dim)])
         mom[0] = rhou
 
@@ -241,12 +241,11 @@ def main(
         actx = PyOpenCLArrayContext(queue,
             allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
 
-    current_dt = 1e-7
-    t_final = 1.0e0
+    current_dt = 1e-8
+    t_final = 1e-7
     current_t = 0
     current_step = 0
     current_cfl = 1.0
-    current_dt = 0.1e-7
     constant_cfl = False
 
     # no internal euler status messages
@@ -322,7 +321,8 @@ def main(
     dummy = DummyBoundary()
 
     boundaries = {
-        DTAG_BOUNDARY("inflow"): PrescribedInviscidBoundary(inflow_init),
+        DTAG_BOUNDARY("inflow"):
+        PrescribedInviscidBoundary(fluid_solution_func=inflow_init),
         DTAG_BOUNDARY("outflow"): dummy,
         DTAG_BOUNDARY("wall"): wall,
     }
@@ -354,11 +354,10 @@ def main(
     nodes = thaw(actx, discr.nodes())
 
     zeros = discr.zeros(actx)
-    from pytools.obj_array import flat_obj_array
-
-    state_init = flat_obj_array(
-        0.15 + zeros, 31500.0 + zeros, 513 * 0.15 + zeros, zeros
-    )
+    from pytools.obj_array import make_obj_array
+    mom_init = make_obj_array([zeros + 513 * 0.15, zeros]) 
+    state_init = make_conserved(dim, mass=0.15+zeros, energy=315000.0+zeros,
+                                momentum=mom_init)
     sigma = (
         1.0e-2 / current_dt * 0.5 * (1.0 + actx.np.tanh((nodes[0] - 0.95) / 0.02))
     )
@@ -449,7 +448,7 @@ def main(
             logger.info(f"{rank=}: NANs/Infs in pressure data.")
 
         from mirgecom.simutil import allsync
-        if allsync(check_range_local(discr, "vol", pressure, .9, 18.6),
+        if allsync(check_range_local(discr, "vol", pressure, 1000, 1.5e5),
                    comm, op=MPI.LOR):
             health_error = True
             from grudge.op import nodal_max, nodal_min
@@ -499,8 +498,8 @@ def main(
             my_write_restart(step=step, t=t, state=state)
             raise
 
-        dt = get_sim_timestep(discr, current_state, current_t, current_dt,
-                              current_cfl, eos, t_final, constant_cfl)
+        dt = get_sim_timestep(discr, state, t, dt, current_cfl, eos, t_final,
+                              constant_cfl)
 
         return state, dt
 
