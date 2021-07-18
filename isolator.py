@@ -582,7 +582,7 @@ if __name__ == "__main__":
     else:
         print(f"Default casename {casename}")
 
-    if args.profiling:
+    if args.profile:
         if args.lazy:
             raise ValueError("Can't use lazy and profiling together.")
         actx_class = PyOpenCLProfilingArrayContext
