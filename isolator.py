@@ -214,9 +214,8 @@ class Discontinuity:
 
 
 @mpi_entry_point
-def main(
-        ctx_factory=cl.create_some_context, rst_filename=None, use_profiling=False,
-        use_logmgr=False, casename="isolator"):
+def main(ctx_factory=cl.create_some_context, rst_filename=None, use_profiling=False,
+         use_logmgr=False, user_input_file=None, use_lazy_eval=False, casename=None):
     """Drive the Y0 example."""
     cl_ctx = ctx_factory()
 
@@ -225,8 +224,10 @@ def main(
     rank = comm.Get_rank()
     nparts = comm.Get_size()
 
-    """logging and profiling"""
+    if casename is None:
+        casename = "mirgecom"
 
+    # logging and profiling
     logmgr = initialize_logmgr(use_logmgr,
         filename=f"{casename}.sqlite", mode="wu", mpi_comm=comm)
 
@@ -355,7 +356,7 @@ def main(
 
     zeros = discr.zeros(actx)
     from pytools.obj_array import make_obj_array
-    mom_init = make_obj_array([zeros + 513 * 0.15, zeros]) 
+    mom_init = make_obj_array([zeros + 513 * 0.15, zeros])
     state_init = make_conserved(dim, mass=0.15+zeros, energy=315000.0+zeros,
                                 momentum=mom_init)
     sigma = (
@@ -552,23 +553,47 @@ if __name__ == "__main__":
 
     logging.basicConfig(format="%(message)s", level=logging.INFO)
 
-    use_logging = True
-    use_profiling = False
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="MIRGE-Com Isentropic Nozzle Driver")
+    parser.add_argument("-r", "--restart_file", type=ascii, dest="restart_file",
+                        nargs="?", action="store", help="simulation restart file")
+    parser.add_argument("-i", "--input_file", type=ascii, dest="input_file",
+                        nargs="?", action="store", help="simulation config file")
+    parser.add_argument("-c", "--casename", type=ascii, dest="casename", nargs="?",
+                        action="store", help="simulation case name")
+    parser.add_argument("--profile", action="store_true", default=False,
+                        help="enable kernel profiling [OFF]")
+    parser.add_argument("--log", action="store_true", default=True,
+                        help="enable logging profiling [ON]")
+    parser.add_argument("--lazy", action="store_true", default=False,
+                        help="enable lazy evaluation [OFF]")
 
-    # crude command line interface
-    # get the restart interval from the command line
-    print(f"Running {sys.argv[0]}\n")
-    nargs = len(sys.argv)
-    if nargs > 1:
-        rst_filename = sys.argv[1]
-        print(f"Restarting from {rst_filename=}.")
-        main(
-            rst_filename=rst_filename,
-            use_profiling=use_profiling,
-            use_logmgr=use_logging,
-        )
+    args = parser.parse_args()
+
+    # for writing output
+    casename = "isolator"
+    if args.casename:
+        print(f"Custom casename {args.casename}")
+        casename = args.casename.replace("'", "")
     else:
-        print("Starting from step 0.")
-        main(use_profiling=use_profiling, use_logmgr=use_logging)
+        print(f"Default casename {casename}")
+
+    rst_filename = None
+    if args.restart_file:
+        rst_filename = (args.restart_file).replace("'", "")
+        print(f"Restarting from file: {rst_filename}")
+
+    input_file = None
+    if args.input_file:
+        input_file = args.input_file.replace("'", "")
+        print(f"Ignoring user input from file: {input_file}")
+    else:
+        print("No user input file, using default values")
+
+    print(f"Running {sys.argv[0]}\n")
+    main(rst_filename=rst_filename, user_input_file=input_file,
+         use_profiling=args.profile, use_lazy_eval=args.lazy,
+         use_logmgr=args.log)
 
 # vim: foldmethod=marker
