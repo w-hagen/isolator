@@ -36,14 +36,17 @@ import pyopencl.array as cla  # noqa
 import math
 
 
-from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.array_context import (
+    PyOpenCLArrayContext,
+    PytatoPyOpenCLArrayContext
+)
+from mirgecom.profiling import PyOpenCLProfilingArrayContext
 from meshmode.mesh import BTAG_ALL, BTAG_NONE  # noqa
 from grudge.eager import EagerDGDiscretization
 from grudge.shortcuts import make_visualizer
 from grudge.dof_desc import DTAG_BOUNDARY
 from logpyle import set_dt
 from mirgecom.euler import extract_vars_for_logging, units_for_logging
-from mirgecom.profiling import PyOpenCLProfilingArrayContext
 from mirgecom.logging_quantities import (
     initialize_logmgr,
     logmgr_add_many_discretization_quantities,
@@ -215,7 +218,8 @@ class Discontinuity:
 
 @mpi_entry_point
 def main(ctx_factory=cl.create_some_context, rst_filename=None, use_profiling=False,
-         use_logmgr=False, user_input_file=None, use_lazy_eval=False, casename=None):
+         use_logmgr=False, user_input_file=None, actx_class=PyOpenCLArrayContext,
+         casename=None):
     """Drive the Y0 example."""
     cl_ctx = ctx_factory()
 
@@ -234,13 +238,12 @@ def main(ctx_factory=cl.create_some_context, rst_filename=None, use_profiling=Fa
     if use_profiling:
         queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
-        actx = PyOpenCLProfilingArrayContext(queue,
-            allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)),
-            logmgr=logmgr)
     else:
         queue = cl.CommandQueue(cl_ctx)
-        actx = PyOpenCLArrayContext(queue,
-            allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
+
+    actx = actx_class(
+        queue,
+        allocator=cl_tools.MemoryPool(cl_tools.ImmediateAllocator(queue)))
 
     current_dt = 1e-8
     t_final = 1e-7
@@ -579,6 +582,14 @@ if __name__ == "__main__":
     else:
         print(f"Default casename {casename}")
 
+    if args.profiling:
+        if args.lazy:
+            raise ValueError("Can't use lazy and profiling together.")
+        actx_class = PyOpenCLProfilingArrayContext
+    else:
+        actx_class = PytatoPyOpenCLArrayContext if args.lazy \
+            else PyOpenCLArrayContext
+
     rst_filename = None
     if args.restart_file:
         rst_filename = (args.restart_file).replace("'", "")
@@ -593,7 +604,7 @@ if __name__ == "__main__":
 
     print(f"Running {sys.argv[0]}\n")
     main(rst_filename=rst_filename, user_input_file=input_file,
-         use_profiling=args.profile, use_lazy_eval=args.lazy,
-         use_logmgr=args.log)
+         use_profiling=args.profile, use_logmgr=args.log,
+         actx_class=actx_class)
 
 # vim: foldmethod=marker
