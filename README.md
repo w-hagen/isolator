@@ -34,7 +34,10 @@ In the directory containing this case file generate the mesh
 ```
 gmsh -o isolator.msh -nopopup -format msh2 ./isolator.geo -2
 ```
-
+To set a custom base element size for mesh generation
+```
+gmsh -setnumber size 0.1 -o isolator.msh -nopopup -format msh2 ./isolator.geo -2
+```
 ## Running Case
 
 The case can the be run similar to other MIRGE-Com applications.
