@@ -478,8 +478,17 @@ Line(456) = {455,456};
 //Top wall
 Line(457) = {212,456};
 
-//Create lineloop of this geometry
-//don't ask how I did this...
+//Create line loop of this geometry
+//The rules as I understand them:
+//  1. gmsh will reorder the lines in the list so they connect/it 
+//     doesn't care about the where the lines are in a list
+//  2. gmsh does care about the direction of the lines. If the lines 
+//     don't form a loop it will cause an error so -2 vs 2
+//     makes a difference
+//  3. gmsh will create a mesh if all of the lines are specified in a
+//     clockwise or counter-clockwise loop, but it appears that mirgecom/mesh mode
+//     needs a one specified in a clockwise direction when view looking in the -z 
+//     direction (from +z).
 Line Loop(1) = {
 //1:211,
 1000,
